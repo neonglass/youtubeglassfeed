@@ -18,22 +18,19 @@
 
 package com.appliedanalog.glass.youtube;
 
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.ListIterator;
 import java.util.UUID;
 
 import android.app.Service;
 import android.content.ContentResolver;
 import android.content.ContentValues;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.database.Cursor;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
 import android.os.Binder;
 import android.os.IBinder;
-import android.os.PowerManager;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
@@ -44,6 +41,10 @@ import com.google.glass.util.SettingsSecure;
 import com.google.googlex.glass.common.proto.MenuItem;
 import com.google.googlex.glass.common.proto.MenuValue;
 import com.google.googlex.glass.common.proto.TimelineItem;
+import com.sun.syndication.feed.synd.SyndEntry;
+import com.sun.syndication.feed.synd.SyndFeed;
+import com.sun.syndication.io.SyndFeedInput;
+import com.sun.syndication.io.XmlReader;
 
 /**
  * A persistant service that maintains a card on the Glass timeline. When turned
@@ -52,10 +53,14 @@ import com.google.googlex.glass.common.proto.TimelineItem;
  *
  */
 public class YoutubeFeedService extends Service{
-	static final String TAG = "GlassHUDService";
-	final int TIMELINE_UPDATE_INTERVAL = 250; //in ms
+	static final String TAG = "YoutubeFeedService";
+	
+	//This is just constant because I have no good way of making it configurable in glass.
+	final String FEED_TO_PARSE = "http://gdata.youtube.com/feeds/base/users/neonbjb/newsubscriptionvideos";
+	final int UPDATE_INTERVAL = 120000; //every 2 minutes
 	
 	YoutubeFeedService me;
+	FeedParser feedParser; //see below for def.
     
 	//States
     boolean enabled = false;
@@ -66,6 +71,7 @@ public class YoutubeFeedService extends Service{
 		me = this;
 		//For the card service
         GlassLocationManager.init(this);
+        feedParser = new FeedParser();
 	}
 	
 	@Override
@@ -85,11 +91,11 @@ public class YoutubeFeedService extends Service{
 		}
 		
 		public void startup(){
-			startHUD();
+			startFeed();
 		}
 		
 		public void shutdown(){
-			stopHUD();
+			stopFeed();
 		}
 	}
 	
@@ -102,31 +108,106 @@ public class YoutubeFeedService extends Service{
 	@Override
 	public void onDestroy(){
 		super.onDestroy();
-		stopHUD();
+		stopFeed();
 	}
 
 	/**
 	 * Starts up the sensors/bluetooth connection and begins pushing data to the timeline.
 	 */
-	void startHUD(){
+	void startFeed(){
 		Log.v(TAG, "STARTING YOUTUBE FEED SERVICE");
 		if(enabled) return;
+		(new Thread(feedParser)).start();
 		enabled = true;
 	}
 	
 	/**
 	 * Shuts down sensors/bluetooth.
 	 */
-	void stopHUD(){
+	void stopFeed(){
 		Log.v(TAG, "STOPPING YOUTUBE FEED SERVICE");
 		if(!enabled) return;
+		feedParser.stop();
 		enabled = false;
+	}
+	
+	class FeedParser implements Runnable{
+		boolean running = false;
+		public void run(){
+			running = true;
+			while(running){
+				parseFeed();
+				try{
+					Thread.sleep(UPDATE_INTERVAL);
+				}catch(Exception e){}
+			}
+		}
+		public void stop(){
+			running = false;
+		}
+	}
+
+	//structure for holding title and id
+	class VidIdAndTitle{
+		String id, title;
+		public VidIdAndTitle(String i, String tit){
+			id = i; title = tit;
+		}
+	}
+	
+	final String LAST_VIDEO_ID = "LastVideoFed";
+	ArrayList<String> parseFeed(){
+		Log.v(TAG, "Parsing feed.");
+		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+		String lastPostedVideoId = prefs.getString(LAST_VIDEO_ID, "");
+		
+		try{
+			SyndFeedInput input = new SyndFeedInput();
+			SyndFeed feed = input.build(new XmlReader(new URL(FEED_TO_PARSE)));
+			Log.v(TAG, "Feed contains " + feed.getEntries().size() + " items");
+			
+			//This list will hold all of the IDs in the RSS stream, which we will then iterate to deliver. We have to do two iterations to make
+			//sure we don't re-deliver movies and such.
+			ArrayList<VidIdAndTitle> vids = new ArrayList<VidIdAndTitle>();
+			Iterator entries = feed.getEntries().iterator();
+			while(entries.hasNext()){
+				SyndEntry entry = (SyndEntry)entries.next();
+				String link = entry.getLink(); //this will be something like youtube.com/watch?v=<id>&featuer=blahblahblah, we just want the id
+				String id = link.substring(link.indexOf("watch?v=") + 8);
+				if(id.contains("&")){
+					id = id.substring(0, id.indexOf("&"));
+				}
+				if(lastPostedVideoId != null && lastPostedVideoId.equals(id)){
+					break; //we've hit the point in the feed where we already were at, don't repost cards.
+				}
+				vids.add(new VidIdAndTitle(id, entry.getTitle()));
+			}
+			Log.v(TAG, "Only " + vids.size() + " are new videos.");
+			
+			//Now iterate vids in reverse, so that the oldest movies get put on the timeline first.
+			ListIterator<VidIdAndTitle> iter = vids.listIterator(vids.size());
+			VidIdAndTitle vid = null;
+			while(iter.hasPrevious()){
+				vid = iter.previous();
+				pushCard(vid.title, vid.id);
+			}
+			//Last but not least, make sure we save the latest video we received back into the shared prefs.
+			if(vid != null){
+				SharedPreferences.Editor ed = prefs.edit();
+				ed.putString(LAST_VIDEO_ID, vid.id);
+				ed.commit();
+			}
+		}catch(Exception rss){
+			Log.v(TAG, "Failed to fetch feed.");
+			rss.printStackTrace();
+		}
+		return null;
 	}
 	
 	String HTML_B4_IMG = "<article class=\"photo\">\n  <img src=\"";
 	String HTML_B4_TXT = "\" width=\"100%\" height=\"100%\">\n  <div class=\"photo-overlay\"></div><section><p class=\"text-auto-size\">";
 	String HTML_FOOT = "</p></section></article>";
-	void pushCard(String videoId){
+	void pushCard(String vidTitle, String videoId){
     	ContentResolver cr = getContentResolver();
     	//For some reason an TimelineHelper instance is required to call some methods.
     	final TimelineHelper tlHelper = new TimelineHelper();
@@ -134,14 +215,14 @@ public class YoutubeFeedService extends Service{
 		Log.v(TAG, "YoutubeFeed: pushing a card for " + videoId);
     	TimelineItem.Builder ntib = tlHelper.createTimelineItemBuilder(me, new SettingsSecure(cr));
     	ntib.setTitle("Glass HUD");
-    	//add the delete menu option
-    	ntib.addMenuItem(MenuItem.newBuilder().setAction(MenuItem.Action.DELETE).setId(UUID.randomUUID().toString()).build());
     	//add the 'view video' option - only works if you have 
     	ntib.addMenuItem(MenuItem.newBuilder().setAction(MenuItem.Action.VIEW_WEB_SITE).setId(UUID.randomUUID().toString())
     										  .addValue(MenuValue.newBuilder().setDisplayName("View Video").build()).build());
+    	//add the delete menu option
+    	ntib.addMenuItem(MenuItem.newBuilder().setAction(MenuItem.Action.DELETE).setId(UUID.randomUUID().toString()).build());
     	ntib.setSendToPhoneUrl("https://www.youtube.com/watch?v=" + videoId);
-    	String html = HTML_B4_IMG + "http://img.youtube.com/vi/<insert-youtube-video-id-here>/hqdefault.jpg" + 
-    				  HTML_B4_TXT + "Youtube Video" + HTML_FOOT;
+    	String html = HTML_B4_IMG + "http://img.youtube.com/vi/" + videoId + "/hqdefault.jpg" + 
+    				  HTML_B4_TXT + vidTitle + HTML_FOOT;
     	ntib.setHtml(html);
     	
     	TimelineItem item = ntib.build();
