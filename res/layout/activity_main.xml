@@ -9,34 +9,14 @@
     tools:context=".MainActivity" >
 
     <Button
-        android:id="@+id/cEnableUpdates"
+        android:id="@+id/bEnableFeed"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentLeft="true"
         android:layout_below="@+id/textView1"
         android:layout_marginLeft="30dp"
         android:layout_marginTop="20dp"
-        android:text="Turn on HUD" />
-
-    <Button
-        android:id="@+id/cEnableWakeLock"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignBaseline="@+id/cEnableUpdates"
-        android:layout_alignBottom="@+id/cEnableUpdates"
-        android:layout_alignParentRight="true"
-        android:layout_marginRight="30dp"
-        android:text="Keep Screen On" />
-
-    <TextView
-        android:id="@+id/tConnectedToHost"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignLeft="@+id/cEnableUpdates"
-        android:layout_centerVertical="true"
-        android:textColor="#ff0000"
-        android:paddingTop="40dp"
-        android:text="Not connected to phone" />
+        android:text="Turn on Feed Service" />
 
     <TextView
         android:id="@+id/textView1"
@@ -44,7 +24,7 @@
         android:layout_height="wrap_content"
         android:layout_alignLeft="@+id/cEnableUpdates"
         android:layout_alignParentTop="true"
-        android:text="GlassHUD"
+        android:text="YouTube Feed"
         android:textSize="30dp" />
 
 </RelativeLayout>

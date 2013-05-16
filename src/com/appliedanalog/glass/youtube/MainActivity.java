@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.appliedanalog.glass.hud;
+package com.appliedanalog.glass.youtube;
 
 import android.os.Bundle;
 import android.os.Handler;
@@ -42,14 +42,12 @@ import android.widget.TextView;
  * on state.
  * @author betker
  */
-public class MainActivity extends Activity implements PhoneSensorComm.BTStateListener {
+public class MainActivity extends Activity {
 	final String TAG = "MainActivity";
 
     //UI Elements
 	Activity me;
-    Button bEnableHUD;
-    Button bWakeLock;
-    TextView tConnectedToPhone;
+    Button bEnableFeed;
     
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -59,67 +57,41 @@ public class MainActivity extends Activity implements PhoneSensorComm.BTStateLis
 		requestWindowFeature(Window.FEATURE_NO_TITLE);
 		setContentView(R.layout.activity_main);
 		getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-		bEnableHUD = (Button)findViewById(R.id.cEnableUpdates);
-		bWakeLock = (Button)findViewById(R.id.cEnableWakeLock);
-		tConnectedToPhone = (TextView)findViewById(R.id.tConnectedToHost);
+		bEnableFeed = (Button)findViewById(R.id.bEnableFeed);
 		me = this;
 		
 		//And bind actions
-		bEnableHUD.setOnClickListener(new OnClickListener(){
+		bEnableFeed.setOnClickListener(new OnClickListener(){
 			@Override
 			public void onClick(View v) {
-				if(bound && hudBinder.running()){
-					hudBinder.shutdown();
+				if(bound && servBinder.running()){
+					servBinder.shutdown();
 				}else if(bound){
-					hudBinder.startup();
+					servBinder.startup();
 				}
 				updateTextFields();
 			}
-		});
-		bWakeLock.setOnClickListener(new OnClickListener(){
-			@Override
-			public void onClick(View v) {
-				if(bound && hudBinder.wakeLockObtained()){
-					hudBinder.releaseWakeLock();
-				}else if(bound){
-					hudBinder.getWakeLock();
-				}
-				updateTextFields();
-			} 
 		});
 	}
 	
 	private void updateTextFields(){
 		if(bound){
-			if(hudBinder.running()){
-				bEnableHUD.setText("Turn off HUD");
+			if(servBinder.running()){
+				bEnableFeed.setText("Turn off Feed Service");
 			}else{
-				bEnableHUD.setText("Turn on HUD");
-			}
-			if(hudBinder.wakeLockObtained()){
-		    	bWakeLock.setText("Let Screen Off");
-			}else{
-		    	bWakeLock.setText("Keep Screen On");
-			}
-			if(hudBinder.isBtConnected()){
-				tConnectedToPhone.setText("Connected to phone");
-				tConnectedToPhone.setTextColor(0xff00ff00); //Green
-			}else{
-				tConnectedToPhone.setText("Not connected to phone");
-				tConnectedToPhone.setTextColor(0xffff0000); //Red
+				bEnableFeed.setText("Turn on Feed Service");
 			}
 		}
 	}
 
-	GlassHUDService.HUDBinder hudBinder;
+	YoutubeFeedService.ServiceBinder servBinder;
 	boolean bound = false;
 	ServiceConnection mConnection = new ServiceConnection(){
 		@Override
 		public void onServiceConnected(ComponentName name, IBinder service) {
 			Log.v(TAG, "ServiceConnected");
-			hudBinder = (GlassHUDService.HUDBinder)service;
+			servBinder = (YoutubeFeedService.ServiceBinder)service;
 			bound = true;
-			hudBinder.setBTListener((PhoneSensorComm.BTStateListener)me); //don't know why this cast is necessary..
 			updateTextFields();
 		}
 
@@ -133,8 +105,8 @@ public class MainActivity extends Activity implements PhoneSensorComm.BTStateLis
 	@Override
 	public void onStart(){
 		super.onStart();
-		startService(new Intent(this, GlassHUDService.class));
-		Intent sIntent = new Intent(this, GlassHUDService.class);
+		startService(new Intent(this, YoutubeFeedService.class));
+		Intent sIntent = new Intent(this, YoutubeFeedService.class);
 		bindService(sIntent, mConnection, Context.BIND_AUTO_CREATE);
 	}
 
@@ -142,31 +114,7 @@ public class MainActivity extends Activity implements PhoneSensorComm.BTStateLis
 	public void onStop(){
 		super.onStop();
 		if(bound){
-			hudBinder.setBTListener(null);
 			this.unbindService(mConnection);
 		}
-	}
-
-	final int UPDATE_TEXT_FIELDS = 32832;
-    private Handler handler = new Handler(){
-    	public void handleMessage(Message msg){
-    		switch(msg.what){
-    		case UPDATE_TEXT_FIELDS:
-    			updateTextFields();
-    			break;
-    		}
-    	}
-    };
-    
-    /**
-     * Callback from the bluetooth manager that indicates
-     * when a HUD server on a companion device is connected
-     * or disconnected.
-     */
-	@Override
-	public void btStatusChanged(boolean state) {
-		Message msg = handler.obtainMessage();
-		msg.what = UPDATE_TEXT_FIELDS;
-		handler.sendMessage(msg);
 	}
 }
