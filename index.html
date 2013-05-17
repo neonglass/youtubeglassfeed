@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>YouTube Glass Feed by neonglass</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>YouTube Glass Feed</h1>
+        <p>YouTube through glass!</p>
+
+        <p class="view"><a href="https://github.com/neonglass/youtubeglassfeed">View the Project on GitHub <small>neonglass/youtubeglassfeed</small></a></p>
+
+
+        <ul>
+          <li><a href="https://github.com/neonglass/youtubeglassfeed/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/neonglass/youtubeglassfeed/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/neonglass/youtubeglassfeed">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <p>This small service-based app forwards YouTube video feeds to your Google Glass' timeline. From there, the videos will actually be viewable on Glass!<br><br>
+Following are some instructions for simple installation without having to build anything.<br><br>
+What you will need:<br></p>
+
+<ul>
+<li>Google Glass<br>
+</li>
+<li>Android Development Kit<br>
+</li>
+<li>Android ADB USB Drivers (or equivalent for your OS of choice)<br><br>
+Installation Instructions:<br>
+</li>
+<li>Download the two APK files you will need:<br><a href="http://www.androidfilehost.com/?fid=22962010882834654">http://www.androidfilehost.com/?fid=22962010882834654</a><br><a href="http://www.androidfilehost.com/?fid=22962010882834650">http://www.androidfilehost.com/?fid=22962010882834650</a><br>
+</li>
+<li>Open .youtubefeedconfig from the first download in your favorite text editor. Follow the instructions to configure what YouTube feed the app will fetch.<br>
+</li>
+<li>Plug in your device and open up an terminal window with access to adb. Type 'adb devices' to verify your Glass is found and ready.<br>
+</li>
+<li>Install the configuration file in the sdcard/ directory by executing this command:
+adb push .youtubefeedconfig sdcard/<br>
+</li>
+<li>Install the YouTube app from the second download:<br>
+adb install com.google.android.youtube-2.apk<br>
+</li>
+<li>Install the Glass Feed app from the first download:<br>
+adb install youtubeglassfeed.apk<br>
+</li>
+<li>Launch the app using Launchy OR Reboot your Glass and the app will automatically launch.<br>
+</li>
+<li>Watch your timeline and enjoy!<br><br>
+How to uninstall:<br>
+</li>
+<li>Connect your glass via USB and run the following commands:<br>
+adb uninstall com.appliedanalog.glass.youtube<br>
+adb uninstall com.google.android.youtube</li>
+</ul>
+      </section>
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/neonglass">neonglass</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <script src="javascripts/scale.fix.js"></script>
+    
+  </body>
+</html>
