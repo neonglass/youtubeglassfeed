@@ -1,0 +1,22 @@
+##################################################################################
+# Use this to specify the youtube feed to attach to. Please test this in a browser
+# before sending it to the app. See some examples below:
+##################################################################################
+# 
+# For "My Subscriptions" feed, replace <username> with you youtube ID.
+#youtubeFeed=http://gdata.youtube.com/feeds/base/users/<username>/newsubscriptionvideos
+#
+# <username>'s videos
+#http://gdata.youtube.com/feeds/api/videos?author=<username>
+#
+# "Default", points to "Top Rated" feed.
+youtubeFeed=http://gdata.youtube.com/feeds/api/standardfeeds/top_rated
+
+# Find more possibilities here:
+# https://gdata.youtube.com/demo/index.html
+
+##################################################################################
+# Use this variable to specify how often the app should query YouTube for updates
+# the value is in minutes.
+##################################################################################
+queryInterval=10

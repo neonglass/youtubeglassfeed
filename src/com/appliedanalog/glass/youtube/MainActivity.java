@@ -1,5 +1,5 @@
 /*
-    GlassHUD - Heads Up Display for Google Glass
+    Youtube Feed - YouTube Atom Feed for Google Glass
     Copyright (C) 2013 James Betker
 
     This program is free software: you can redistribute it and/or modify
