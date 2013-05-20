@@ -27,13 +27,17 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.UUID;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.ContentResolver;
 import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Binder;
 import android.os.IBinder;
+import android.os.SystemClock;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
@@ -69,7 +73,6 @@ public class YoutubeFeedService extends Service{
 	final String SERVICE_ENABLED = "ServiceEnabled";
 	
 	YoutubeFeedService me;
-	FeedParser feedParser; //see below for def.
 	String feedUrl = "http://gdata.youtube.com/feeds/api/standardfeeds/top_rated";
 	int updateInterval = 10 * 60 * 1000; //every 10 minutes
 	boolean sendAllVideos = true; //everytime there is a new video, send all the videos from the feed as opposed to just one.
@@ -83,12 +86,33 @@ public class YoutubeFeedService extends Service{
 		me = this;
 		//For the card service
         GlassLocationManager.init(this);
-        feedParser = new FeedParser();
 	}
+	
+	//Intent extras
+	final String FEED_SERVICE_OP = "op";
+	
+	//And values
+	final int OP_SYNC = 5832;
 	
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startid){
 		super.onStartCommand(intent, flags, startid);
+		
+		//If the service was started with a purpose, handle it.
+		if(intent.getExtras() != null &&
+		   intent.getExtras().getInt(FEED_SERVICE_OP, -1) != -1){
+			switch(intent.getExtras().getInt(FEED_SERVICE_OP)){
+			case OP_SYNC:
+				//We need to do a sync, but since it is a network operation we need to push it off the main thread.
+				(new Thread(){
+					public void run(){
+						parseFeed();
+					}
+				}).start();
+				break;
+			}
+			return START_STICKY;
+		}
 		
 		//Attempt to load configuration settings if they exist
 		try{
@@ -153,12 +177,27 @@ public class YoutubeFeedService extends Service{
 		stopFeed();
 	}
 
+	PendingIntent getAlarmIntent(){
+    	Intent i = new Intent(this, YoutubeFeedService.class);
+    	i.putExtra(FEED_SERVICE_OP, OP_SYNC);
+    	PendingIntent pi = PendingIntent.getService(this, 0, i, 0);
+    	return pi;
+	}
+	
 	/**
 	 * Starts up the sensors/bluetooth connection and begins pushing data to the timeline.
 	 */
 	void startFeed(){
 		Log.v(TAG, "STARTING YOUTUBE FEED SERVICE");
-		if(!feedParser.running) (new Thread(feedParser)).start();
+		
+    	//create recurring intent
+    	AlarmManager mgr = (AlarmManager)getSystemService(Context.ALARM_SERVICE);
+		PendingIntent pi = getAlarmIntent();
+		//turn off autosync if it has been started
+    	mgr.cancel(pi);
+		//turn it on now.
+    	mgr.setRepeating(AlarmManager.RTC_WAKEUP, SystemClock.elapsedRealtime(), updateInterval, pi);
+    	
 		enabled = true;
 		//Commit to prefs.
 		saveEnableState();
@@ -169,7 +208,13 @@ public class YoutubeFeedService extends Service{
 	 */
 	void stopFeed(){
 		Log.v(TAG, "STOPPING YOUTUBE FEED SERVICE");
-		if(feedParser.running) feedParser.stop();
+		
+    	//halt the timer that is doing the updating.
+    	AlarmManager mgr = (AlarmManager)getSystemService(Context.ALARM_SERVICE);
+		PendingIntent pi = getAlarmIntent();
+		//turn off autosync
+    	mgr.cancel(pi);
+    	
 		enabled = false;
 		saveEnableState();
 	}
@@ -179,22 +224,6 @@ public class YoutubeFeedService extends Service{
 		SharedPreferences.Editor ed = prefs.edit();
 		ed.putBoolean(SERVICE_ENABLED, enabled);
 		ed.commit();
-	}
-	
-	class FeedParser implements Runnable{
-		boolean running = false;
-		public void run(){
-			running = true;
-			while(running){
-				parseFeed();
-				try{
-					Thread.sleep(updateInterval);
-				}catch(Exception e){}
-			}
-		}
-		public void stop(){
-			running = false;
-		}
 	}
 
 	//structure for holding title and id
@@ -262,7 +291,7 @@ public class YoutubeFeedService extends Service{
 					id = id.substring(0, id.indexOf("&"));
 				}
 				if(lastPostedVideoId != null && lastPostedVideoId.equals(id)){
-					if(vids.size() == 0){
+					if(vids.size() > 0){
 						hasNewVideos = true;
 					}
 					if(!sendAllVideos){ //then do not include any more videos in the array list we will be sending off to the cards.
@@ -271,10 +300,9 @@ public class YoutubeFeedService extends Service{
 				}
 				vids.add(new VideoInfo(id, entry.getTitle(), fetchVideoDurationFromContents(entry.getContents())));		
 			}
-			Log.v(TAG, "Only " + vids.size() + " are new videos.");
 			
 			//Last but not least, make sure we save the latest video we received back into the shared prefs.
-			if(vids.size() > 0){
+			if(hasNewVideos){
 				//Push the videos to the timeline
 				pushCards(vids);
 				//Save the newest card as the latest read video.

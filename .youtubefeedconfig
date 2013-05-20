@@ -20,3 +20,10 @@ youtubeFeed=http://gdata.youtube.com/feeds/api/standardfeeds/top_rated
 # the value is in minutes.
 ##################################################################################
 queryInterval=10
+
+##################################################################################
+# Use this flag to specify if an entire YouTube feed (25 videos) should be packaged
+# together on the timeline whenever a new video is posted. If false, only the
+# new videos will show up.
+##################################################################################
+sendAllVideos=false
