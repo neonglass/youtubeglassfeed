@@ -99,7 +99,7 @@ public class YoutubeFeedService extends Service{
 		super.onStartCommand(intent, flags, startid);
 		
 		//If the service was started with a purpose, handle it.
-		if(intent.getExtras() != null &&
+		if(intent != null && intent.getExtras() != null &&
 		   intent.getExtras().getInt(FEED_SERVICE_OP, -1) != -1){
 			switch(intent.getExtras().getInt(FEED_SERVICE_OP)){
 			case OP_SYNC:
