@@ -13,4 +13,4 @@ or you can download it here:
 http://www.androidfilehost.com/?fid=22962010882834650
 
 You can fetch the binary for this app here:
-http://www.androidfilehost.com/?fid=22962010882834651
+http://www.androidfilehost.com/?fid=22962010882834654

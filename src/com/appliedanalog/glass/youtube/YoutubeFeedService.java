@@ -72,9 +72,10 @@ public class YoutubeFeedService extends Service{
 	FeedParser feedParser; //see below for def.
 	String feedUrl = "http://gdata.youtube.com/feeds/api/standardfeeds/top_rated";
 	int updateInterval = 10 * 60 * 1000; //every 10 minutes
+	boolean sendAllVideos = true; //everytime there is a new video, send all the videos from the feed as opposed to just one.
     
 	//States
-    boolean enabled = false;
+    boolean enabled = true;
 	
 	@Override
 	public void onCreate(){
@@ -101,6 +102,9 @@ public class YoutubeFeedService extends Service{
 				if(line.startsWith("queryInterval=")){
 					updateInterval = Integer.parseInt(line.replace("queryInterval=", "")) * 60 * 1000;
 				}
+				if(line.startsWith("sendAllVideos=")){
+					sendAllVideos = Boolean.parseBoolean(line.replace("sendAllVideos=", ""));
+				}
 			}
 			Log.v(TAG, "Successfully parsed configuration file. youtubeFeed='" + feedUrl + "', queryInterval='" + updateInterval + "'");
 			reader.close();
@@ -110,7 +114,7 @@ public class YoutubeFeedService extends Service{
 		
 		//Fetch the enable state
 		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(me);
-		enabled = prefs.getBoolean(SERVICE_ENABLED, false);
+		enabled = prefs.getBoolean(SERVICE_ENABLED, true);
 		if(enabled){
 			startFeed();
 		}
@@ -249,6 +253,7 @@ public class YoutubeFeedService extends Service{
 			//sure we don't re-deliver movies and such.
 			ArrayList<VideoInfo> vids = new ArrayList<VideoInfo>();
 			Iterator entries = feed.getEntries().iterator();
+			boolean hasNewVideos = false;
 			while(entries.hasNext()){
 				SyndEntry entry = (SyndEntry)entries.next();
 				String link = entry.getLink(); //this will be something like youtube.com/watch?v=<id>&featuer=blahblahblah, we just want the id
@@ -257,7 +262,12 @@ public class YoutubeFeedService extends Service{
 					id = id.substring(0, id.indexOf("&"));
 				}
 				if(lastPostedVideoId != null && lastPostedVideoId.equals(id)){
-					break; //we've hit the point in the feed where we already were at, don't repost cards.
+					if(vids.size() == 0){
+						hasNewVideos = true;
+					}
+					if(!sendAllVideos){ //then do not include any more videos in the array list we will be sending off to the cards.
+						break; //we've hit the point in the feed where we already were at, don't repost cards.
+					}
 				}
 				vids.add(new VideoInfo(id, entry.getTitle(), fetchVideoDurationFromContents(entry.getContents())));		
 			}
