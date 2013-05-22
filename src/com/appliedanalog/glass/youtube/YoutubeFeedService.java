@@ -40,6 +40,7 @@ import android.os.IBinder;
 import android.os.SystemClock;
 import android.preference.PreferenceManager;
 import android.util.Log;
+import android.view.KeyEvent;
 
 import com.google.glass.location.GlassLocationManager;
 import com.google.glass.logging.UserEventAction;
@@ -111,7 +112,7 @@ public class YoutubeFeedService extends Service{
 				}).start();
 				break;
 			}
-			return START_STICKY;
+			return START_NOT_STICKY;
 		}
 		
 		//Attempt to load configuration settings if they exist
@@ -143,7 +144,7 @@ public class YoutubeFeedService extends Service{
 			startFeed();
 		}
 		
-		return START_STICKY;
+		return START_NOT_STICKY;
 	}
 	
 	/**
