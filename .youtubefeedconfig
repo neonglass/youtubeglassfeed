@@ -4,13 +4,13 @@
 ##################################################################################
 # 
 # For "My Subscriptions" feed, replace <username> with you youtube ID.
-#youtubeFeed=http://gdata.youtube.com/feeds/base/users/<username>/newsubscriptionvideos
+youtubeFeed=http://gdata.youtube.com/feeds/base/users/neonbjb/newsubscriptionvideos
 #
 # <username>'s videos
 #http://gdata.youtube.com/feeds/api/videos?author=<username>
 #
 # "Default", points to "Top Rated" feed.
-youtubeFeed=http://gdata.youtube.com/feeds/api/standardfeeds/top_rated
+#youtubeFeed=http://gdata.youtube.com/feeds/api/standardfeeds/top_rated
 
 # Find more possibilities here:
 # https://gdata.youtube.com/demo/index.html
@@ -19,11 +19,11 @@ youtubeFeed=http://gdata.youtube.com/feeds/api/standardfeeds/top_rated
 # Use this variable to specify how often the app should query YouTube for updates
 # the value is in minutes.
 ##################################################################################
-queryInterval=10
+queryInterval=60
 
 ##################################################################################
 # Use this flag to specify if an entire YouTube feed (25 videos) should be packaged
 # together on the timeline whenever a new video is posted. If false, only the
 # new videos will show up.
 ##################################################################################
-sendAllVideos=false
+sendAllVideos=true

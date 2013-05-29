@@ -47,18 +47,18 @@ public class MainActivity extends Activity {
 
     //UI Elements
 	Activity me;
-    Button bEnableFeed;
+    //Button bEnableFeed;
     
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		
+		/* No UI - it is handled by the timeline.
 		//Set up UI
 		requestWindowFeature(Window.FEATURE_NO_TITLE);
 		setContentView(R.layout.activity_main);
 		getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
 		bEnableFeed = (Button)findViewById(R.id.bEnableFeed);
-		me = this;
 		
 		//And bind actions
 		bEnableFeed.setOnClickListener(new OnClickListener(){
@@ -72,16 +72,20 @@ public class MainActivity extends Activity {
 				updateTextFields();
 			}
 		});
+		*/
+		
+		me = this;
+		
 	}
 	
 	private void updateTextFields(){
-		if(bound){
+		/*if(bound){
 			if(servBinder.running()){
 				bEnableFeed.setText("Turn off Feed Service");
 			}else{
 				bEnableFeed.setText("Turn on Feed Service");
 			}
-		}
+		}*/
 	}
 
 	YoutubeFeedService.ServiceBinder servBinder;
@@ -102,12 +106,35 @@ public class MainActivity extends Activity {
 		}
 	};
 	
+	class DelayedIntentDeliverer implements Runnable{
+		public void run(){
+			while(!bound){
+				try{Thread.sleep(50);}catch(Exception e){}
+			}
+			//push the intent on to the service.
+			Intent myIntent = me.getIntent();
+			if(myIntent != null && myIntent.getData() != null){
+				Log.v(TAG, "MainActivity bound to service! intent=" + myIntent.getData().toString());
+				if(myIntent.getData().toString().contains("startFeed")){
+					servBinder.startup();
+				}else if(myIntent.getData().toString().contains("stopFeed")){
+					servBinder.shutdown();
+				}
+			}
+			me.finish();
+		}
+	}
+	
 	@Override
 	public void onStart(){
 		super.onStart();
+		
 		startService(new Intent(this, YoutubeFeedService.class));
 		Intent sIntent = new Intent(this, YoutubeFeedService.class);
 		bindService(sIntent, mConnection, Context.BIND_AUTO_CREATE);
+
+		//Start up a thread that will deliver the intent that started us up to the service once bound.
+		(new Thread(new DelayedIntentDeliverer())).start();
 	}
 
 	@Override

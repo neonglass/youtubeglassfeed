@@ -72,6 +72,7 @@ public class YoutubeFeedService extends Service{
 	//Shared pref constants
 	final String LAST_VIDEO_ID = "LastVideoFed";
 	final String SERVICE_ENABLED = "ServiceEnabled";
+	final String HOME_CARD = "HomeCardIdent";
 	
 	YoutubeFeedService me;
 	String feedUrl = "http://gdata.youtube.com/feeds/api/standardfeeds/top_rated";
@@ -85,6 +86,7 @@ public class YoutubeFeedService extends Service{
 	public void onCreate(){
 		super.onCreate();
 		me = this;
+		
 		//For the card service
         GlassLocationManager.init(this);
 	}
@@ -98,6 +100,11 @@ public class YoutubeFeedService extends Service{
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startid){
 		super.onStartCommand(intent, flags, startid);
+		loadConfiguration(); //reload config every cycle.
+		
+		if(intent.getData() != null){
+			Log.v(TAG, "onStartCommand! intent=" + intent.getData().toString());
+		}
 		
 		//If the service was started with a purpose, handle it.
 		if(intent != null && intent.getExtras() != null &&
@@ -115,28 +122,6 @@ public class YoutubeFeedService extends Service{
 			return START_NOT_STICKY;
 		}
 		
-		//Attempt to load configuration settings if they exist
-		try{
-			BufferedReader reader = new BufferedReader(new FileReader(CONFIGURATION_FILE));
-			String line = "";
-			while((line = reader.readLine()) != null){
-				if(line.startsWith("#")) continue; //its a comment
-				if(line.startsWith("youtubeFeed=")){
-					feedUrl = line.replace("youtubeFeed=", "");
-				}
-				if(line.startsWith("queryInterval=")){
-					updateInterval = Integer.parseInt(line.replace("queryInterval=", "")) * 60 * 1000;
-				}
-				if(line.startsWith("sendAllVideos=")){
-					sendAllVideos = Boolean.parseBoolean(line.replace("sendAllVideos=", ""));
-				}
-			}
-			Log.v(TAG, "Successfully parsed configuration file. youtubeFeed='" + feedUrl + "', queryInterval='" + updateInterval + "'");
-			reader.close();
-		}catch(Exception e){
-			Log.v(TAG, "Error loading configuration file: " + e.getMessage());
-		}
-		
 		//Fetch the enable state
 		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(me);
 		enabled = prefs.getBoolean(SERVICE_ENABLED, true);
@@ -144,7 +129,44 @@ public class YoutubeFeedService extends Service{
 			startFeed();
 		}
 		
+		String homeCardId = prefs.getString(HOME_CARD, null);
+		if(homeCardId == null){
+			//Push the introduction card.
+			pushIntroductionCard();
+		}
+		
 		return START_NOT_STICKY;
+	}
+	
+	void loadConfiguration(){
+		//Attempt to load configuration settings if they exist
+		try{
+			BufferedReader reader = new BufferedReader(new FileReader(CONFIGURATION_FILE));
+			String line = "";
+			while((line = reader.readLine()) != null){
+				try{
+					if(line.startsWith("#")) continue; //its a comment
+					if(line.startsWith("youtubeFeed=")){
+						feedUrl = line.replace("youtubeFeed=", "");
+						Log.v(TAG, "Setting feedUrl=" + feedUrl);
+					}
+					if(line.startsWith("queryInterval=")){
+						updateInterval = Integer.parseInt(line.replace("queryInterval=", "")) * 60 * 1000;
+						Log.v(TAG, "Setting queryInterval=" + updateInterval + "ms");
+					}
+					if(line.startsWith("sendAllVideos=")){
+						sendAllVideos = Boolean.parseBoolean(line.replace("sendAllVideos=", ""));
+						Log.v(TAG, "Setting sendAllVideos=" + sendAllVideos);
+					}
+				}catch(Exception ex){
+					Log.v(TAG, "Improper configuration formatting on this line: `" + line + "` - " + ex.getMessage());
+				}
+			}
+			Log.v(TAG, "Successfully parsed configuration file. youtubeFeed='" + feedUrl + "', queryInterval='" + updateInterval + "'");
+			reader.close();
+		}catch(Exception e){
+			Log.v(TAG, "Error loading configuration file: " + e.getMessage());
+		}
 	}
 	
 	/**
@@ -175,7 +197,6 @@ public class YoutubeFeedService extends Service{
 	@Override
 	public void onDestroy(){
 		super.onDestroy();
-		stopFeed();
 	}
 
 	PendingIntent getAlarmIntent(){
@@ -202,6 +223,9 @@ public class YoutubeFeedService extends Service{
 		enabled = true;
 		//Commit to prefs.
 		saveEnableState();
+		
+		//Update home card
+		refreshIntroductionCard();
 	}
 	
 	/**
@@ -218,6 +242,9 @@ public class YoutubeFeedService extends Service{
     	
 		enabled = false;
 		saveEnableState();
+		
+		//Update home card
+		refreshIntroductionCard();
 	}
 	
 	void saveEnableState(){
@@ -269,10 +296,11 @@ public class YoutubeFeedService extends Service{
 		return "";
 	}
 	
-	ArrayList<String> parseFeed(){
-		Log.v(TAG, "Parsing feed.");
+	void parseFeed(){
 		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
 		String lastPostedVideoId = prefs.getString(LAST_VIDEO_ID, "");
+		
+		Log.v(TAG, "Parsing feed: " + feedUrl);
 		
 		try{
 			SyndFeedInput input = new SyndFeedInput();
@@ -283,7 +311,7 @@ public class YoutubeFeedService extends Service{
 			//sure we don't re-deliver movies and such.
 			ArrayList<VideoInfo> vids = new ArrayList<VideoInfo>();
 			Iterator entries = feed.getEntries().iterator();
-			boolean hasNewVideos = false;
+			boolean hasNewVideos = true; boolean firstEntry = true; boolean hitEnd = false;
 			while(entries.hasNext()){
 				SyndEntry entry = (SyndEntry)entries.next();
 				String link = entry.getLink(); //this will be something like youtube.com/watch?v=<id>&featuer=blahblahblah, we just want the id
@@ -291,15 +319,25 @@ public class YoutubeFeedService extends Service{
 				if(id.contains("&")){
 					id = id.substring(0, id.indexOf("&"));
 				}
+				if(id.equals("")){
+					Log.v(TAG, "Error parsing video title.." + entry.getLink());
+				}
+				if(firstEntry && lastPostedVideoId != null && lastPostedVideoId.equals(id)){
+					Log.v(TAG, "Feed does not have any new videos");
+					hasNewVideos = false;
+					break;
+				}
+				firstEntry = false;
 				if(lastPostedVideoId != null && lastPostedVideoId.equals(id)){
-					if(vids.size() > 0){
-						hasNewVideos = true;
+					if(!hitEnd){
+						Log.v(TAG, "Hit the last processed video in the feed. " + vids.size() + " new videos found.");
+						hitEnd = true;
 					}
 					if(!sendAllVideos){ //then do not include any more videos in the array list we will be sending off to the cards.
 						break; //we've hit the point in the feed where we already were at, don't repost cards.
 					}
 				}
-				vids.add(new VideoInfo(id, entry.getTitle(), fetchVideoDurationFromContents(entry.getContents())));		
+				vids.add(new VideoInfo(id, entry.getTitle(), fetchVideoDurationFromContents(entry.getContents())));
 			}
 			
 			//Last but not least, make sure we save the latest video we received back into the shared prefs.
@@ -314,16 +352,21 @@ public class YoutubeFeedService extends Service{
 				Log.v(TAG, "Saving last read video id: " + latestVid.id);
 			}
 		}catch(Exception rss){
-			Log.v(TAG, "Failed to fetch feed.");
+			Log.v(TAG, "Failed to fetch feed");
 			rss.printStackTrace();
 		}
-		return null;
+		
+		//stop the service, it is no longer needed.
+		stopSelf();
 	}
 	
-	String HTML_B4_IMG = "<article class=\"photo\">\n  <img src=\"";
-	String HTML_B4_TXT = "\" width=\"100%\" height=\"100%\">\n  <div class=\"photo-overlay\"></div><section><p class=\"text-auto-size\">";
-	String HTML_FOOT = "</p></section></article>";
-	void pushCards(ArrayList<VideoInfo> vidInfos){
+	
+
+	void pushCards(ArrayList<VideoInfo> vidInfos){	
+		final String HTML_B4_IMG = "<article class=\"photo\">\n  <img src=\"";
+		final String HTML_B4_TXT = "\" width=\"100%\" height=\"100%\">\n  <div class=\"photo-overlay\"></div><section><p class=\"text-auto-size\">";
+		final String HTML_FOOT = "</p></section></article>";
+		
     	ContentResolver cr = getContentResolver();
     	//For some reason an TimelineHelper instance is required to call some methods.
     	final TimelineHelper tlHelper = new TimelineHelper();
@@ -337,10 +380,9 @@ public class YoutubeFeedService extends Service{
     	boolean firstCard = true;
     	while(iter.hasPrevious()){
     		VideoInfo vidInfo = iter.previous();
-    		Log.v(TAG, "YoutubeFeed: pushing a card for " + vidInfo.id);
         	TimelineItem.Builder ntib = tlHelper.createTimelineItemBuilder(me, new SettingsSecure(cr));
         	ntib.setTitle("YouTube Feed");
-        	//add the 'view video' option - only works if you have 
+        	//add the 'view video' option - only works if you have the youtube app installed
         	ntib.addMenuItem(MenuItem.newBuilder().setAction(MenuItem.Action.VIEW_WEB_SITE).setId(UUID.randomUUID().toString())
         										  .addValue(MenuValue.newBuilder().setDisplayName("View Video").build()).build());
         	//add the delete menu option
@@ -352,7 +394,7 @@ public class YoutubeFeedService extends Service{
         	ntib.setHtml(html);
         	ntib.setBundleId(bundleId);
         	if(firstCard){
-        		ntib.setNotification(NotificationConfig.newBuilder().setLevel(NotificationConfig.Level.DEFAULT));
+        		ntib.setNotification(NotificationConfig.newBuilder().setLevel(NotificationConfig.Level.DEFAULT)); //Doesn't work, probably because we are sideloading the card
         	}
         	cards.add(ntib.build());
         	firstCard = false;
@@ -360,5 +402,89 @@ public class YoutubeFeedService extends Service{
 		
     	//Bulk insert the cards
     	tlHelper.bulkInsertTimelineItem(me, cards);
+	}
+	
+	void applyHomeCardValues(TimelineItem.Builder tibuilder){
+		final String HTML_B4_UPDATE_INTERVAL = "<article> <section> <b>YouTube Feed for Glass</b><br><div class=\"text-small\" style=\"padding-top:15px;\">Updates Every ";
+		final String HTML_B4_FEED_URL = " minutes</div><div class=\"text-small\" style=\"padding-top:5px;\">Feed:</div><div class=\"blue text-x-small\">";
+		final String HTML_FOOT = "</div></section></article>";
+		final String HTML_NOT_ENABLED = "<article> <section> <b>YouTube Feed for Glass</b><br /><b class=\"red\">Turned Off</b></section></article>";
+		
+		String url, text, html;
+		if(enabled){
+			url = "youtubefeedservice://stopFeed";
+			text = "Stop feed";
+			html = HTML_B4_UPDATE_INTERVAL + (updateInterval / 1000 / 60) + HTML_B4_FEED_URL + feedUrl + HTML_FOOT;
+			
+			//pin status.
+			tibuilder.setIsPinned(false);
+			tibuilder.setPinTime(-1); //unpinned pin time  	
+		}else{
+			url = "youtubefeedservice://startFeed";
+			text = "Start feed";
+			html = HTML_NOT_ENABLED;
+			
+			//pin status.
+			tibuilder.setIsPinned(true);
+			tibuilder.setPinTime(System.currentTimeMillis()); //unpinned pin time  	
+		}
+    	//custom URL that this app will intercept.
+		tibuilder.setSendToPhoneUrl(url);
+		tibuilder.clearMenuItem();
+		tibuilder.addMenuItem(MenuItem.newBuilder().setAction(MenuItem.Action.VIEW_WEB_SITE).setId(UUID.randomUUID().toString())
+    										       .addValue(MenuValue.newBuilder().setDisplayName(text).build()).build());
+    	//delete option
+		tibuilder.addMenuItem(MenuItem.newBuilder().setAction(MenuItem.Action.DELETE).setId(UUID.randomUUID().toString()).build());
+		
+		//HTML
+    	tibuilder.setHtml(html);
+	}
+
+	void pushIntroductionCard(){	
+    	ContentResolver cr = getContentResolver();
+    	//For some reason an TimelineHelper instance is required to call some methods.
+    	final TimelineHelper tlHelper = new TimelineHelper();
+    	TimelineItem.Builder ntib = tlHelper.createTimelineItemBuilder(me,  new SettingsSecure(cr));
+    	ntib.setTitle("YouTube Feeds");
+    	applyHomeCardValues(ntib);
+    	TimelineItem card = ntib.build();
+    	ContentValues vals = TimelineHelper.toContentValues(card);
+    	cr.insert(TimelineProvider.TIMELINE_URI, vals);
+    	
+    	//Store the ID for later use
+		SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(me);
+    	SharedPreferences.Editor editor = pref.edit();
+    	editor.putString(HOME_CARD, card.getId());
+    	editor.commit();
+	}
+	
+	/**
+	 * changes the home card to reflect the current state of the system.
+	 */
+	void refreshIntroductionCard(){
+		SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(me);   
+		String homeCardId = pref.getString(HOME_CARD, null);
+		if(homeCardId == null){ //no point going further
+			return;
+		}
+		
+    	final TimelineHelper tlHelper = new TimelineHelper();
+    	final ContentResolver cr = getContentResolver();
+		final TimelineItem baseItem = tlHelper.queryTimelineItem(cr, homeCardId);
+		TimelineHelper.Update updater = new TimelineHelper.Update(){
+			@Override
+			public TimelineItem onExecute() {
+	    		TimelineItem.Builder builder = TimelineItem.newBuilder(baseItem);
+	    		applyHomeCardValues(builder);
+	    		
+	    		//also, pin this card so that the service can be re-started in the future.
+	    		
+	    		
+	    		//I still haven't figured out quite what the last two booleans here do..
+	    		return tlHelper.updateTimelineItem(me, builder.build(), null, true, false);
+			}
+		};
+		//Send the callback off to the thread. This should block until the update is complete.
+		TimelineHelper.atomicUpdateTimelineItem(updater);
 	}
 }

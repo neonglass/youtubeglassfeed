@@ -18,23 +18,29 @@
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
         android:label="YouTube Feeds"
-        android:theme="@style/AppTheme" >
+        android:theme="@android:style/Theme.NoDisplay" >
         <activity
             android:name=".MainActivity"
             android:label="YouTube Feeds"
             android:screenOrientation="landscape" >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSEABLE" />
+                <data android:scheme="youtubefeedservice" />
+            </intent-filter>
         </activity>
-        <service android:name=".YoutubeFeedService" />
+        <service android:name=".YoutubeFeedService">
+        </service>
         <receiver android:name=".ServiceAutoStarter">  
-	    <intent-filter>  
-	        <action android:name="android.intent.action.BOOT_COMPLETED" />  
-	    </intent-filter>  
-</receiver>
+		    <intent-filter>  
+		        <action android:name="android.intent.action.BOOT_COMPLETED" />  
+		    </intent-filter>  
+		</receiver>
     </application>
 
 </manifest>
