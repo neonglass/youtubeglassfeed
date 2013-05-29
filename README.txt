@@ -14,3 +14,10 @@ http://www.androidfilehost.com/?fid=22962010882834650
 
 You can fetch the binary for this app here:
 http://www.androidfilehost.com/?fid=22962010882834654
+
+Please note that once you have installed the application, you will need to get around
+plan B by running the main activity:
+
+adb shell am start -n com.appliedanalog.glass.youtube/.MainActivity
+
+After this, it will handle itself! YoutubeFeed is entirely managed via the timeline.

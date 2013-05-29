@@ -36,112 +36,33 @@ import android.widget.Button;
 import android.widget.TextView;
 
 /**
- * The MainActivity for this app is simply a controller for the backing Service. The
- * Service then provides the UI through the Glass Timeline. This activity allows the
- * user to turn Service functionality on and off and lock the screen in a permanently
- * on state.
+ * The MainActivity for this app is simply a launcher for the backing service. It has no UI.
  * @author betker
  */
 public class MainActivity extends Activity {
 	final String TAG = "MainActivity";
-
-    //UI Elements
-	Activity me;
-    //Button bEnableFeed;
     
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		
-		/* No UI - it is handled by the timeline.
-		//Set up UI
-		requestWindowFeature(Window.FEATURE_NO_TITLE);
-		setContentView(R.layout.activity_main);
-		getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-		bEnableFeed = (Button)findViewById(R.id.bEnableFeed);
-		
-		//And bind actions
-		bEnableFeed.setOnClickListener(new OnClickListener(){
-			@Override
-			public void onClick(View v) {
-				if(bound && servBinder.running()){
-					servBinder.shutdown();
-				}else if(bound){
-					servBinder.startup();
-				}
-				updateTextFields();
-			}
-		});
-		*/
-		
-		me = this;
-		
-	}
-	
-	private void updateTextFields(){
-		/*if(bound){
-			if(servBinder.running()){
-				bEnableFeed.setText("Turn off Feed Service");
-			}else{
-				bEnableFeed.setText("Turn on Feed Service");
-			}
-		}*/
-	}
-
-	YoutubeFeedService.ServiceBinder servBinder;
-	boolean bound = false;
-	ServiceConnection mConnection = new ServiceConnection(){
-		@Override
-		public void onServiceConnected(ComponentName name, IBinder service) {
-			Log.v(TAG, "ServiceConnected");
-			servBinder = (YoutubeFeedService.ServiceBinder)service;
-			bound = true;
-			updateTextFields();
-		}
-
-		@Override
-		public void onServiceDisconnected(ComponentName name) {
-			Log.v(TAG, "ServiceDisconnected");
-			bound = false;
-		}
-	};
-	
-	class DelayedIntentDeliverer implements Runnable{
-		public void run(){
-			while(!bound){
-				try{Thread.sleep(50);}catch(Exception e){}
-			}
-			//push the intent on to the service.
-			Intent myIntent = me.getIntent();
-			if(myIntent != null && myIntent.getData() != null){
-				Log.v(TAG, "MainActivity bound to service! intent=" + myIntent.getData().toString());
-				if(myIntent.getData().toString().contains("startFeed")){
-					servBinder.startup();
-				}else if(myIntent.getData().toString().contains("stopFeed")){
-					servBinder.shutdown();
-				}
-			}
-			me.finish();
-		}
 	}
 	
 	@Override
 	public void onStart(){
 		super.onStart();
 		
-		startService(new Intent(this, YoutubeFeedService.class));
-		Intent sIntent = new Intent(this, YoutubeFeedService.class);
-		bindService(sIntent, mConnection, Context.BIND_AUTO_CREATE);
-
-		//Start up a thread that will deliver the intent that started us up to the service once bound.
-		(new Thread(new DelayedIntentDeliverer())).start();
+		//Start up the service.
+		Intent serviceIntent = new Intent(this, YoutubeFeedService.class);
+		Intent myIntent = getIntent();
+		if(myIntent != null){
+			serviceIntent.setData(myIntent.getData());
+		}
+		startService(serviceIntent);
+		finish();
 	}
 
 	@Override
 	public void onStop(){
 		super.onStop();
-		if(bound){
-			this.unbindService(mConnection);
-		}
 	}
 }

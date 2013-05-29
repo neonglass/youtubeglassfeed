@@ -35,7 +35,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.Binder;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.os.SystemClock;
 import android.preference.PreferenceManager;
@@ -81,6 +81,7 @@ public class YoutubeFeedService extends Service{
     
 	//States
     boolean enabled = true;
+    boolean feedStarted = false;
 	
 	@Override
 	public void onCreate(){
@@ -100,42 +101,67 @@ public class YoutubeFeedService extends Service{
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startid){
 		super.onStartCommand(intent, flags, startid);
+		
+		Log.v(TAG, "Service onStartCommand intent=" + (intent == null ? "null" : intent.toString()));
+		Log.v(TAG, "Intent data URI: " + intent.getDataString());
+		
 		loadConfiguration(); //reload config every cycle.
 		
-		if(intent.getData() != null){
-			Log.v(TAG, "onStartCommand! intent=" + intent.getData().toString());
-		}
-		
-		//If the service was started with a purpose, handle it.
-		if(intent != null && intent.getExtras() != null &&
-		   intent.getExtras().getInt(FEED_SERVICE_OP, -1) != -1){
-			switch(intent.getExtras().getInt(FEED_SERVICE_OP)){
-			case OP_SYNC:
-				//We need to do a sync, but since it is a network operation we need to push it off the main thread.
-				(new Thread(){
-					public void run(){
-						parseFeed();
-					}
-				}).start();
-				break;
+		try{
+			//If the service was started with a purpose, handle it.
+			if(intent != null && intent.getExtras() != null &&
+			   intent.getExtras().getInt(FEED_SERVICE_OP, -1) != -1){
+				switch(intent.getExtras().getInt(FEED_SERVICE_OP)){
+				case OP_SYNC:
+					//We need to do a sync, but since it is a network operation we need to push it off the main thread.
+					Log.v(TAG, "SyncOp, syncing feed now.");
+					(new Thread("FeedParsing Thread."){
+						public void run(){
+							parseFeed();
+						}
+					}).start();
+					break;
+				}
+				return START_NOT_STICKY;
 			}
+			
+			if(intent != null && intent.getData() != null){
+				Log.v(TAG, "Start/Stop Op, adjusting now per URI.");
+				if(intent.getData().toString().contains("startFeed")){
+					startFeed();
+				}else if(intent.getData().toString().contains("stopFeed")){
+					stopFeed();
+				}
+				return START_NOT_STICKY;
+			}
+			
+			//Fetch the enable state
+			Log.v(TAG, "Fell through op switch, doing default functionality");
+			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(me);
+			enabled = prefs.getBoolean(SERVICE_ENABLED, true);
+			
+			String homeCardId = prefs.getString(HOME_CARD, null);
+			if(homeCardId == null){
+				Log.v(TAG, "Appears to be the first time using this app - pushing an introduction card.");
+				//Push the introduction card.
+				pushIntroductionCard();
+			}
+			
+			if(enabled){
+				Log.v(TAG, "Feed service is enabled, calling startFeed()..");
+				startFeed();
+			}
+			
 			return START_NOT_STICKY;
+		}finally{
+			Log.v(TAG, "Service has been started, exiting onStartService().");
 		}
-		
-		//Fetch the enable state
-		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(me);
-		enabled = prefs.getBoolean(SERVICE_ENABLED, true);
-		if(enabled){
-			startFeed();
-		}
-		
-		String homeCardId = prefs.getString(HOME_CARD, null);
-		if(homeCardId == null){
-			//Push the introduction card.
-			pushIntroductionCard();
-		}
-		
-		return START_NOT_STICKY;
+	}
+	
+	@Override
+	public IBinder onBind(Intent intent){
+		//no bindings here
+		return null;
 	}
 	
 	void loadConfiguration(){
@@ -148,15 +174,12 @@ public class YoutubeFeedService extends Service{
 					if(line.startsWith("#")) continue; //its a comment
 					if(line.startsWith("youtubeFeed=")){
 						feedUrl = line.replace("youtubeFeed=", "");
-						Log.v(TAG, "Setting feedUrl=" + feedUrl);
 					}
 					if(line.startsWith("queryInterval=")){
 						updateInterval = Integer.parseInt(line.replace("queryInterval=", "")) * 60 * 1000;
-						Log.v(TAG, "Setting queryInterval=" + updateInterval + "ms");
 					}
 					if(line.startsWith("sendAllVideos=")){
 						sendAllVideos = Boolean.parseBoolean(line.replace("sendAllVideos=", ""));
-						Log.v(TAG, "Setting sendAllVideos=" + sendAllVideos);
 					}
 				}catch(Exception ex){
 					Log.v(TAG, "Improper configuration formatting on this line: `" + line + "` - " + ex.getMessage());
@@ -167,31 +190,6 @@ public class YoutubeFeedService extends Service{
 		}catch(Exception e){
 			Log.v(TAG, "Error loading configuration file: " + e.getMessage());
 		}
-	}
-	
-	/**
-	 * The Binder class for interfacing between the controller activity and this service.
-	 * @author betker
-	 *
-	 */
-	public class ServiceBinder extends Binder{
-		public boolean running(){
-			return enabled;
-		}
-		
-		public void startup(){
-			startFeed();
-		}
-		
-		public void shutdown(){
-			stopFeed();
-		}
-	}
-	
-	ServiceBinder vBinder = new ServiceBinder();
-	@Override
-	public IBinder onBind(Intent intent) {
-		return vBinder;
 	}
 	
 	@Override
@@ -210,7 +208,15 @@ public class YoutubeFeedService extends Service{
 	 * Starts up the sensors/bluetooth connection and begins pushing data to the timeline.
 	 */
 	void startFeed(){
-		Log.v(TAG, "STARTING YOUTUBE FEED SERVICE");
+		enabled = true;
+		//Commit to prefs.
+		saveEnableState();
+		
+		if(feedStarted){
+			Log.v(TAG, "Feed has already been started, returning.");
+			return;
+		}
+		Log.v(TAG, "startFeed() - booting up feed service.");
 		
     	//create recurring intent
     	AlarmManager mgr = (AlarmManager)getSystemService(Context.ALARM_SERVICE);
@@ -219,11 +225,8 @@ public class YoutubeFeedService extends Service{
     	mgr.cancel(pi);
 		//turn it on now.
     	mgr.setRepeating(AlarmManager.RTC_WAKEUP, SystemClock.elapsedRealtime(), updateInterval, pi);
-    	
-		enabled = true;
-		//Commit to prefs.
-		saveEnableState();
-		
+    	feedStarted = true;
+
 		//Update home card
 		refreshIntroductionCard();
 	}
@@ -232,13 +235,14 @@ public class YoutubeFeedService extends Service{
 	 * Shuts down sensors/bluetooth.
 	 */
 	void stopFeed(){
-		Log.v(TAG, "STOPPING YOUTUBE FEED SERVICE");
+		Log.v(TAG, "stopFeed() - powering down feed service.");
 		
     	//halt the timer that is doing the updating.
     	AlarmManager mgr = (AlarmManager)getSystemService(Context.ALARM_SERVICE);
 		PendingIntent pi = getAlarmIntent();
 		//turn off autosync
     	mgr.cancel(pi);
+    	feedStarted = false;
     	
 		enabled = false;
 		saveEnableState();
@@ -373,6 +377,12 @@ public class YoutubeFeedService extends Service{
     	
     	String bundleId = UUID.randomUUID().toString();
     	ArrayList<TimelineItem> cards = new ArrayList<TimelineItem>();
+
+    	//Push a home card to the end of the list so the user can disable the feed if desired.
+    	TimelineItem.Builder ntib = tlHelper.createTimelineItemBuilder(me, new SettingsSecure(cr));
+    	applyHomeCardValues(ntib);
+    	ntib.setBundleId(bundleId);
+    	cards.add(ntib.build());
     	
     	//Iterate through all of the new videos coming in and add them to the same bundle. We are iterating in reverse so that
     	//the newest video gets pushed to the top of the stack.
@@ -380,7 +390,7 @@ public class YoutubeFeedService extends Service{
     	boolean firstCard = true;
     	while(iter.hasPrevious()){
     		VideoInfo vidInfo = iter.previous();
-        	TimelineItem.Builder ntib = tlHelper.createTimelineItemBuilder(me, new SettingsSecure(cr));
+    		ntib = tlHelper.createTimelineItemBuilder(me, new SettingsSecure(cr));
         	ntib.setTitle("YouTube Feed");
         	//add the 'view video' option - only works if you have the youtube app installed
         	ntib.addMenuItem(MenuItem.newBuilder().setAction(MenuItem.Action.VIEW_WEB_SITE).setId(UUID.randomUUID().toString())
@@ -403,6 +413,8 @@ public class YoutubeFeedService extends Service{
     	//Bulk insert the cards
     	tlHelper.bulkInsertTimelineItem(me, cards);
 	}
+	
+	
 	
 	void applyHomeCardValues(TimelineItem.Builder tibuilder){
 		final String HTML_B4_UPDATE_INTERVAL = "<article> <section> <b>YouTube Feed for Glass</b><br><div class=\"text-small\" style=\"padding-top:15px;\">Updates Every ";
@@ -428,6 +440,7 @@ public class YoutubeFeedService extends Service{
 			tibuilder.setIsPinned(true);
 			tibuilder.setPinTime(System.currentTimeMillis()); //unpinned pin time  	
 		}
+		tibuilder.setTitle("YouTube Feeds");
     	//custom URL that this app will intercept.
 		tibuilder.setSendToPhoneUrl(url);
 		tibuilder.clearMenuItem();
@@ -445,7 +458,6 @@ public class YoutubeFeedService extends Service{
     	//For some reason an TimelineHelper instance is required to call some methods.
     	final TimelineHelper tlHelper = new TimelineHelper();
     	TimelineItem.Builder ntib = tlHelper.createTimelineItemBuilder(me,  new SettingsSecure(cr));
-    	ntib.setTitle("YouTube Feeds");
     	applyHomeCardValues(ntib);
     	TimelineItem card = ntib.build();
     	ContentValues vals = TimelineHelper.toContentValues(card);
@@ -485,6 +497,6 @@ public class YoutubeFeedService extends Service{
 			}
 		};
 		//Send the callback off to the thread. This should block until the update is complete.
-		TimelineHelper.atomicUpdateTimelineItem(updater);
+		TimelineHelper.atomicUpdateTimelineItemAsync(updater);
 	}
 }
